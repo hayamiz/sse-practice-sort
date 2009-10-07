@@ -40,6 +40,8 @@ odd_merge_in_register_sort(__m128 *x0, __m128 *x1, __m128 *x2, __m128 *x3)
 
     COMPARE_TWO(*x1, *x2);
 
+    // transpose matrix
+    // see. http://download.intel.com/design/PentiumIII/sml/24504301.pdf
     __m128 tmp;
     __m128 row0, row1;
     tmp = _mm_shuffle_ps(*x0, *x1, _MM_SHUFFLE(1,0,1,0));
