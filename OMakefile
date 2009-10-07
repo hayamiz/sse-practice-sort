@@ -1,0 +1,17 @@
+
+.PHONY: clean
+
+CFILES[] =
+  sse-practice
+
+MAIN = main
+
+CFLAGS += -msse -msse2 -Wall -g -O2
+
+.DEFAULT: $(CProgram $(MAIN), $(CFILES))
+
+sse-practice.s: sse-practice.c
+  gcc -S $(CFLAGS) $<
+
+clean:
+  rm -f main *.s *.o
