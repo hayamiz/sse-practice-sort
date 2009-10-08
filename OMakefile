@@ -6,7 +6,7 @@ CFILES[] =
 
 MAIN = main
 
-CFLAGS += -msse -msse2 -Wall -g -O2
+CFLAGS += -msse -Wall -g -O3
 
 .DEFAULT: $(CProgram $(MAIN), $(CFILES))
 
