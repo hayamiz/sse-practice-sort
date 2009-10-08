@@ -1,5 +1,8 @@
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <xmmintrin.h>
 
 static void
@@ -66,7 +69,7 @@ static void inline
 bitonic_merge_kernel(__m128 *a, __m128 *b)
 {
     __m128 l, h, lp, hp, ol, oh;
-    
+    puts("-----------------------------------------------");
     *b = _mm_shuffle_ps(*b, *b, _MM_SHUFFLE(0,1,2,3));
     inspectLH(*a, *b);
 
@@ -74,7 +77,6 @@ bitonic_merge_kernel(__m128 *a, __m128 *b)
     h = _mm_max_ps(*a, *b);
     lp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(1,0,1,0));
     hp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(3,2,3,2));
-    inspectLH(l, h);
     inspectLH(lp, hp);
     
     l = _mm_min_ps(lp, hp);
@@ -83,7 +85,6 @@ bitonic_merge_kernel(__m128 *a, __m128 *b)
     lp = _mm_shuffle_ps(lp, lp, _MM_SHUFFLE(3,1,2,0));
     hp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(3,1,3,1));
     hp = _mm_shuffle_ps(hp, hp, _MM_SHUFFLE(3,1,2,0));
-    inspectLH(l, h);
     inspectLH(lp, hp);
 
     l = _mm_min_ps(lp, hp);
@@ -119,25 +120,24 @@ simple_bitonic_test(void)
 
 // assume the length of list is 16
 static void
-bitonic_sort_two_4x4(float* list)
+bitonic_sort_16elems(float *ret, float* list)
 {
     __m128 x[4];
     int i;
 
     for(i = 0;i < 4;i++){
-        x[i] = _mm_set_ps(list[4*i + 0], list[4*i + 1],
-                          list[4*i + 2], list[4*i + 3]);
+        x[i] = _mm_load_ps(list + 4 * i);
     }
     odd_merge_in_register_sort(&x[0], &x[1], &x[2], &x[3]);
-    puts("odd_merged:");
-    inspect(x[0]); inspect(x[1]); inspect(x[2]); inspect(x[3]);
-    puts("----");
     bitonic_merge_kernel(&x[0], &x[1]);
     bitonic_merge_kernel(&x[2], &x[3]);
-    _mm_storeu_ps(list, x[0]);
-    _mm_storeu_ps(list+4, x[1]);
-    _mm_storeu_ps(list+8, x[2]);
-    _mm_storeu_ps(list+12, x[3]);
+    puts("bitonic_sort_16elems:");
+    inspect(x[0]); inspect(x[1]); inspect(x[2]); inspect(x[3]);
+    puts("----");
+    _mm_storeu_ps(ret, x[0]);
+    _mm_storeu_ps(ret+4, x[1]);
+    _mm_storeu_ps(ret+8, x[2]);
+    _mm_storeu_ps(ret+12, x[3]);
 }
 
 static void
@@ -149,7 +149,7 @@ simple_bitonic_sort_test(void)
                  5.0f, 11.0f, 15.0f, 10.0f};
     int i;
 
-    bitonic_sort_two_4x4(f);
+    bitonic_sort_16elems(f, f);
     for(i = 0;i < 8;i++){
         printf("%f ", f[i]);
     }
@@ -160,9 +160,162 @@ simple_bitonic_sort_test(void)
     puts("");
 }
 
+/* list must be 16 aligned */
+/* for now, length is assumed to be 2^n */
+static void
+merge_sort(float *buffer, float *list, uintptr_t length);
+static void
+merge_sort_rev(float *buffer, float *list, uintptr_t length);
+static void inline
+merge_sort_merge(float *output, float *input, uintptr_t length);
+
+/* merge_sort is expected to sort list in place */
+static void
+merge_sort(float *buffer, float *list, uintptr_t length)
+{
+    uintptr_t half = length / 2;
+    if (length == 16){
+        bitonic_sort_16elems(buffer, list);
+    } else {
+        merge_sort_rev(buffer, list, half);
+        merge_sort_rev(buffer + half, list + half, half);
+    }
+    merge_sort_merge(list, buffer, length);
+}
+
+/* merge_sort_rev is expected to sort list and write output to buffer */
+static void 
+merge_sort_rev(float *buffer, float *list, uintptr_t length)
+{
+    uintptr_t half = length / 2;
+    if (length == 16){
+        bitonic_sort_16elems(list, list);
+    } else {
+        merge_sort(buffer, list, half);
+        merge_sort(buffer + half, list + half, half);
+    }
+    
+    merge_sort_merge(buffer, list, length);
+}
+
+static void inline
+merge_sort_merge(float *output, float *input, uintptr_t length)
+{
+
+    uintptr_t half;
+    float *halfptr;
+    float *sentinelptr;
+
+    half = length / 2;
+    halfptr = input + half;
+    sentinelptr = input + length;
+
+    __m128 x, y;
+    float *list1 = input;
+    float *list2 = halfptr;
+    x = _mm_load_ps(list1);
+    y = _mm_load_ps(list2);
+    list1 += 4;
+    list2 += 4;
+    inspect(x);
+    inspect(y);
+    bitonic_merge_kernel(&x, &y);
+    inspect(x);
+    inspect(y);
+    _mm_storeu_ps(output, x);
+    output += 4;
+
+    while(true){
+        if (*list1 < *list2){
+            x = _mm_load_ps(list1);
+            list1 += 4;
+    inspect(x);
+    inspect(y);
+            bitonic_merge_kernel(&x, &y);
+    inspect(x);
+    inspect(y);
+            _mm_storeu_ps(output, x);
+            output += 4;
+            if (list1 >= halfptr){
+                goto nomore_in_list1;
+            }
+        } else {
+            x = _mm_load_ps(list2);
+            list2 += 4;
+    inspect(x);
+    inspect(y);
+            bitonic_merge_kernel(&x, &y);
+    inspect(x);
+    inspect(y);
+            _mm_storeu_ps(output, x);
+            output += 4;
+            if (list2 >= sentinelptr){
+                goto nomore_in_list2;
+            }
+        }
+    }
+nomore_in_list1:
+    while(list2 < sentinelptr){
+        x = _mm_load_ps(list2);
+        list2 += 4;
+    inspect(x);
+    inspect(y);
+        bitonic_merge_kernel(&x, &y);
+    inspect(x);
+    inspect(y);
+        _mm_storeu_ps(output, x);
+        output += 4;
+    }
+    goto end;
+nomore_in_list2:
+    while(list1 < halfptr){
+        x = _mm_load_ps(list1);
+        list1 += 4;
+    inspect(x);
+    inspect(y);
+        bitonic_merge_kernel(&x, &y);
+    inspect(x);
+    inspect(y);
+        _mm_storeu_ps(output, x);
+        output += 4;
+    }
+end:
+    _mm_storeu_ps(output, y);
+    return;
+}
+
+static void
+merge_sort_test(void)
+{
+    float *list;
+    float *buffer;
+    uintptr_t num = 1 << 6;
+    posix_memalign(&list, 16, sizeof(float) * num);
+    posix_memalign(&buffer, 16, sizeof(float) * num);
+
+    memset(list, 0, sizeof(float) * num);
+    memset(buffer, 0, sizeof(float) * num);
+
+    uintptr_t i;
+    srand(0);
+    for(i = 0;i < num;i++){
+        list[i] = (float)drand48();
+    }
+    puts("number generated.");
+    merge_sort(buffer, list, num);
+    puts("sorted");
+    for(i = 0;i < num - 1;i++){
+        if (list[i] > list[i+1]){
+            printf("[%ld]%f, [%ld]%f: not sorted.\n",
+                   i, list[i], i+1, list[i+1]);
+        }
+    }
+}
+
 int main(void)
 {
-    simple_bitonic_sort_test();
+    // simple_bitonic_sort_test();
+    merge_sort_test();
     
     return 0;
 }
