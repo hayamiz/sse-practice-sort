@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <xmmintrin.h>
+#include <sys/time.h>
 
 static void
 inspectLH(__m128 l, __m128 h)
@@ -69,15 +70,15 @@ static void inline
 bitonic_merge_kernel(__m128 *a, __m128 *b)
 {
     __m128 l, h, lp, hp, ol, oh;
-    puts("-----------------------------------------------");
+    // puts("-----------------------------------------------");
     *b = _mm_shuffle_ps(*b, *b, _MM_SHUFFLE(0,1,2,3));
-    inspectLH(*a, *b);
+    // inspectLH(*a, *b);
 
     l = _mm_min_ps(*a, *b);
     h = _mm_max_ps(*a, *b);
     lp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(1,0,1,0));
     hp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(3,2,3,2));
-    inspectLH(lp, hp);
+    // inspectLH(lp, hp);
     
     l = _mm_min_ps(lp, hp);
     h = _mm_max_ps(lp, hp);
@@ -85,7 +86,7 @@ bitonic_merge_kernel(__m128 *a, __m128 *b)
     lp = _mm_shuffle_ps(lp, lp, _MM_SHUFFLE(3,1,2,0));
     hp = _mm_shuffle_ps(l, h, _MM_SHUFFLE(3,1,3,1));
     hp = _mm_shuffle_ps(hp, hp, _MM_SHUFFLE(3,1,2,0));
-    inspectLH(lp, hp);
+    // inspectLH(lp, hp);
 
     l = _mm_min_ps(lp, hp);
     h = _mm_max_ps(lp, hp);
@@ -94,8 +95,8 @@ bitonic_merge_kernel(__m128 *a, __m128 *b)
     
     *a = _mm_shuffle_ps(ol, ol, _MM_SHUFFLE(3,1,2,0));
     *b = _mm_shuffle_ps(oh, oh, _MM_SHUFFLE(3,1,2,0));
-    inspectLH(l, h);
-    inspectLH(*a, *b);
+    // inspectLH(l, h);
+    // inspectLH(*a, *b);
 }
 
 static void
@@ -131,9 +132,9 @@ bitonic_sort_16elems(float *ret, float* list)
     odd_merge_in_register_sort(&x[0], &x[1], &x[2], &x[3]);
     bitonic_merge_kernel(&x[0], &x[1]);
     bitonic_merge_kernel(&x[2], &x[3]);
-    puts("bitonic_sort_16elems:");
-    inspect(x[0]); inspect(x[1]); inspect(x[2]); inspect(x[3]);
-    puts("----");
+    // puts("bitonic_sort_16elems:");
+    // inspect(x[0]); inspect(x[1]); inspect(x[2]); inspect(x[3]);
+    // puts("----");
     _mm_storeu_ps(ret, x[0]);
     _mm_storeu_ps(ret+4, x[1]);
     _mm_storeu_ps(ret+8, x[2]);
@@ -217,11 +218,7 @@ merge_sort_merge(float *output, float *input, uintptr_t length)
     y = _mm_load_ps(list2);
     list1 += 4;
     list2 += 4;
-    inspect(x);
-    inspect(y);
     bitonic_merge_kernel(&x, &y);
-    inspect(x);
-    inspect(y);
     _mm_storeu_ps(output, x);
     output += 4;
 
@@ -229,11 +226,7 @@ merge_sort_merge(float *output, float *input, uintptr_t length)
         if (*list1 < *list2){
             x = _mm_load_ps(list1);
             list1 += 4;
-    inspect(x);
-    inspect(y);
             bitonic_merge_kernel(&x, &y);
-    inspect(x);
-    inspect(y);
             _mm_storeu_ps(output, x);
             output += 4;
             if (list1 >= halfptr){
@@ -242,11 +235,7 @@ merge_sort_merge(float *output, float *input, uintptr_t length)
         } else {
             x = _mm_load_ps(list2);
             list2 += 4;
-    inspect(x);
-    inspect(y);
             bitonic_merge_kernel(&x, &y);
-    inspect(x);
-    inspect(y);
             _mm_storeu_ps(output, x);
             output += 4;
             if (list2 >= sentinelptr){
@@ -258,11 +247,7 @@ nomore_in_list1:
     while(list2 < sentinelptr){
         x = _mm_load_ps(list2);
         list2 += 4;
-    inspect(x);
-    inspect(y);
         bitonic_merge_kernel(&x, &y);
-    inspect(x);
-    inspect(y);
         _mm_storeu_ps(output, x);
         output += 4;
     }
@@ -271,25 +256,25 @@ nomore_in_list2:
     while(list1 < halfptr){
         x = _mm_load_ps(list1);
         list1 += 4;
-    inspect(x);
-    inspect(y);
         bitonic_merge_kernel(&x, &y);
-    inspect(x);
-    inspect(y);
         _mm_storeu_ps(output, x);
         output += 4;
     }
 end:
+    
     _mm_storeu_ps(output, y);
     return;
 }
 
 static void
-merge_sort_test(void)
+merge_sort_test(uintptr_t num_exp)
 {
     float *list;
     float *buffer;
-    uintptr_t num = 1 << 6;
+    uintptr_t num = 1 << num_exp;
+    struct timeval start_time, end_time;
+    
+    printf("size: %ld.\n", num);
     posix_memalign(&list, 16, sizeof(float) * num);
     posix_memalign(&buffer, 16, sizeof(float) * num);
 
@@ -302,20 +287,35 @@ merge_sort_test(void)
         list[i] = (float)drand48();
     }
     puts("number generated.");
+
+    gettimeofday(&start_time, NULL);
     merge_sort(buffer, list, num);
-    puts("sorted");
+    gettimeofday(&end_time, NULL);
+    
+    puts("sorted.");
     for(i = 0;i < num - 1;i++){
         if (list[i] > list[i+1]){
             printf("[%ld]%f, [%ld]%f: not sorted.\n",
                    i, list[i], i+1, list[i+1]);
         }
     }
+    puts("checked.");
+
+    printf("time: %lf sec.\n", (double)(end_time.tv_sec - start_time.tv_sec) + (double)(end_time.tv_usec - start_time.tv_usec)/1000000);
+
+    for(i = 0;i < num;i++){
+        // printf("%f\n", list[i]);
+    }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    // simple_bitonic_sort_test();
-    merge_sort_test();
+    uintptr_t num_exp = 10;
+    if (argc >= 2){
+        num_exp = atoi(argv[1]);
+    }
+    
+    merge_sort_test(num_exp);
     
     return 0;
 }
