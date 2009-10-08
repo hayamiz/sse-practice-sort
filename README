@@ -1,0 +1,4 @@
+
+An merge sort program using SSE intrinsics.
+
+Reference: http://doi.acm.org/10.1145/1454159.1454171
