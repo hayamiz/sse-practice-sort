@@ -274,7 +274,7 @@ merge_sort_test(uintptr_t num_exp)
     uintptr_t num = 1 << num_exp;
     struct timeval start_time, end_time;
     
-    printf("size: %ld.\n", num);
+    fprintf(stderr, "size: %ld.\n", num);
     posix_memalign(&list, 16, sizeof(float) * num);
     posix_memalign(&buffer, 16, sizeof(float) * num);
 
@@ -286,20 +286,20 @@ merge_sort_test(uintptr_t num_exp)
     for(i = 0;i < num;i++){
         list[i] = (float)drand48();
     }
-    puts("number generated.");
-
+    fprintf(stderr, "number generated.\n");
+    
     gettimeofday(&start_time, NULL);
     merge_sort(buffer, list, num);
     gettimeofday(&end_time, NULL);
     
-    puts("sorted.");
+    fprintf(stderr, "sorted.\n");
     for(i = 0;i < num - 1;i++){
         if (list[i] > list[i+1]){
             printf("[%ld]%f, [%ld]%f: not sorted.\n",
                    i, list[i], i+1, list[i+1]);
         }
     }
-    puts("checked.");
+    fprintf(stderr, "checked.\n");
 
     printf("time: %lf sec.\n", (double)(end_time.tv_sec - start_time.tv_sec) + (double)(end_time.tv_usec - start_time.tv_usec)/1000000);
 
